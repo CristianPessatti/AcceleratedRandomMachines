@@ -2,7 +2,7 @@ require(dplyr)
 require(ggplot2)
 require(arrow)
 
-source("automation/active_learning.R")
+source("activeLearning/active_learning.R")
 source("functions/sampling/validation_samplers.R")
 
 set.seed(123)
