@@ -8,7 +8,7 @@ source("functions/sampling/validation_samplers.R")
 set.seed(123)
 
 # Load dataset
-df <- arrow::read_parquet("datasets/linear_split.parquet")
+df <- arrow::read_parquet("datasets/beans.parquet")
 df$y <- as.factor(df$y)
 
 # Train/validation split (70/30) stratified
@@ -19,14 +19,13 @@ valid_df <- df[split$test, , drop = FALSE]
 res <- activeLearning(
   train_df = train_df,
   valid_df = valid_df,
-  initial_n = max(100L, round(0.1 * nrow(train_df))),
-  kernel = "vanilladot",
+  initial_n = 1000L,
+  kernel = "rbfdot",
   alpha = 3,
   heterogeneous_prop = 0.8,
-  stopping_patience = 2
+  stopping_patience = 5
 )
 
-# Plot convergence
 p <- ggplot(res$history, aes(x = iteration, y = mean_accuracy)) +
   geom_line(color = "steelblue", linewidth = 1) +
   geom_point(color = "steelblue", size = 1.5) +

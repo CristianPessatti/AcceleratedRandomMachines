@@ -8,25 +8,30 @@ source("functions/sampling/validation_samplers.R")
 set.seed(123)
 
 # Load dataset
-df <- arrow::read_parquet("datasets/linear_split.parquet")
+df <- arrow::read_parquet("datasets/circles.parquet")
 df$y <- as.factor(df$y)
+
+df %>%
+  ggplot(aes(x = x1, y = x2, colour = y)) +
+  geom_point() +
+  theme_minimal()
 
 # Train/validation split (70/30) stratified
 split <- stratified_holdout(df$y, train_prop = 0.7, seed = 123)
 train_df <- df[split$train, , drop = FALSE]
 valid_df <- df[split$test, , drop = FALSE]
+
 # Run active learning
 res <- activeLearning(
   train_df = train_df,
   valid_df = valid_df,
-  initial_n = max(100L, round(0.1 * nrow(train_df))),
-  kernel = "vanilladot",
+  initial_n = 50L,
+  kernel = "rbfdot",
   alpha = 3,
   heterogeneous_prop = 0.8,
-  stopping_patience = 2
+  stopping_patience = 3
 )
 
-# Plot convergence
 p <- ggplot(res$history, aes(x = iteration, y = mean_accuracy)) +
   geom_line(color = "steelblue", linewidth = 1) +
   geom_point(color = "steelblue", size = 1.5) +
