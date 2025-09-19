@@ -50,9 +50,6 @@ localized_sampling <- function(data,
   homogeneous_samples_prop <- min(homogeneous_total_size /
     sum(data$partition %in% homogeneous_partitions), 1)
 
-
-  print(paste("Heterogeneous partitions:", heterogeneous_samples_prop))
-  print(paste("Homogeneous partitions:", homogeneous_samples_prop))
   heterogeneous_samples <- map_dfr(heterogeneous_partitions, function(prt) {
     sys_o2(data %>% filter(partition == prt),
            y_var = "y",
