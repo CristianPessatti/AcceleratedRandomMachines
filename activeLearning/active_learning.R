@@ -15,6 +15,11 @@ require(dplyr)
 require(tibble)
 require(kernlab)
 require(rpart)
+require(ggplot2)
+utils::globalVariables(c(
+  "iteration", "mean_accuracy", "plateau_max_pred",
+  "x", "y", "y_cls", ".row_id"
+))
 
 source("functions/sampling/localized_sampling.R")
 source("functions/sampling/nearest_enemy_sampling.R")
@@ -33,6 +38,7 @@ source("activeLearning/fit_model.R")
 # - stopping_delta: min absolute improvement in mean accuracy to continue
 # - stopping_patience: stop after this many consecutive small improvements
 # - max_additions: optional cap on number of points to add
+# - animate: if TRUE, draw plots during iterations (convergence and scatter)
 activeLearning <- function(
   train_df,
   valid_df,
@@ -44,7 +50,8 @@ activeLearning <- function(
   stopping_delta = 1e-3,
   stopping_patience = 5,
   max_additions = NULL,
-  verbose = TRUE
+  verbose = TRUE,
+  animate = TRUE
 ) {
   stopifnot("y" %in% names(train_df), "y" %in% names(valid_df))
   train_df <- as.data.frame(train_df)
@@ -99,6 +106,41 @@ activeLearning <- function(
   acc_history <- numeric(0)
   above_plateau_streak <- 0L
 
+  # Precompute 2D coordinates for scatter animation
+  plot_coords <- NULL
+  if (animate) {
+    if (length(feature_names) == 2) {
+      plot_coords <- tibble::tibble(
+        .row_id = train_df$.row_id,
+        x = train_df[[feature_names[1]]],
+        y = train_df[[feature_names[2]]],
+        y_cls = train_df$y
+      )
+    } else if (length(feature_names) > 2) {
+      X <- as.matrix(scale(train_df[, feature_names, drop = FALSE]))
+      pr <- tryCatch(stats::prcomp(X, center = FALSE, scale. = FALSE), error = function(e) NULL)
+      if (!is.null(pr)) {
+        S <- pr$x
+        if (ncol(S) == 1) S <- cbind(S, rep(0, nrow(S)))
+        plot_coords <- tibble::tibble(
+          .row_id = train_df$.row_id,
+          x = S[, 1],
+          y = S[, 2],
+          y_cls = train_df$y
+        )
+      } else {
+        # Fallback to first two features if PCA fails
+        f2 <- head(feature_names, 2)
+        plot_coords <- tibble::tibble(
+          .row_id = train_df$.row_id,
+          x = train_df[[f2[1]]],
+          y = train_df[[f2[2]]],
+          y_cls = train_df$y
+        )
+      }
+    }
+  }
+
 
   # Evaluate initial pool
   iter <- 0L
@@ -137,6 +179,40 @@ activeLearning <- function(
   if (verbose) {
     cat(sprintf("[ActiveLearning] Iteration %d | accuracy=%.4f | plateau=%.4f | added=%d | decision=%s\n",
               iter, res0$mean_accuracy, plateau0, 0L, "continue"))
+    flush.console()
+  }
+
+  # Draw initial animation frames
+  if (animate) {
+    # Convergence plot
+    p <- ggplot(history, aes(x = iteration, y = mean_accuracy)) +
+      geom_line(color = "steelblue", linewidth = 1) +
+      geom_point(color = "steelblue", size = 1.5) +
+      geom_line(aes(x = iteration, y = plateau_max_pred), color = "red", linewidth = 1) +
+      ylim(0, 1) +
+      theme_minimal() +
+      labs(title = "Active Learning Convergence",
+           x = "Iteration",
+           y = "Mean Accuracy (validation)")
+    # Scatter highlighting active samples if coords available
+    if (!is.null(plot_coords)) {
+      active_ids <- active_df$.row_id
+      p_sc <- ggplot() +
+        geom_point(data = plot_coords, aes(x = x, y = y), color = "gray50", alpha = 0.08, size = 1) +
+        geom_point(data = dplyr::filter(plot_coords, .row_id %in% active_ids),
+                   aes(x = x, y = y, color = y_cls), alpha = 1, size = 1.5) +
+        theme_minimal() +
+        labs(title = "Active Sample Highlighting",
+             x = "Dim 1",
+             y = "Dim 2",
+             color = "Class")
+      grid::grid.newpage()
+      grid::pushViewport(grid::viewport(layout = grid::grid.layout(1, 2)))
+      print(p, vp = grid::viewport(layout.pos.row = 1, layout.pos.col = 1))
+      print(p_sc, vp = grid::viewport(layout.pos.row = 1, layout.pos.col = 2))
+    } else {
+      print(p)
+    }
     flush.console()
   }
 
@@ -251,6 +327,42 @@ activeLearning <- function(
     if (verbose) {
       cat(sprintf("[ActiveLearning] Iteration %d | accuracy=%.4f | plateau=%.4f | added=%d | decision=%s\n",
                   iter, res_iter$mean_accuracy, plateau, added_this_iter, decision_msg))
+      flush.console()
+    }
+
+    # Update animation frames
+    if (animate) {
+      p <- ggplot(history, aes(x = iteration, y = mean_accuracy)) +
+        geom_line(color = "steelblue", linewidth = 1) +
+        geom_point(color = "steelblue", size = 1.5) +
+        geom_line(aes(x = iteration, y = plateau_max_pred), color = "red", linewidth = 1) +
+        ylim(0, 1) +
+        theme_minimal() +
+        labs(title = "Active Learning Convergence",
+             x = "Iteration",
+             y = "Mean Accuracy (validation)")
+      if (!is.null(plot_coords)) {
+        active_ids <- active_df$.row_id
+        just_added_ids <- add_df$.row_id
+        just_added_coords <- dplyr::filter(plot_coords, .row_id %in% just_added_ids)
+        p_sc <- ggplot() +
+          geom_point(data = plot_coords, aes(x = x, y = y), color = "gray50", alpha = 0.08, size = 1) +
+          geom_point(data = dplyr::filter(plot_coords, .row_id %in% active_ids),
+                     aes(x = x, y = y, color = y_cls), alpha = 1, size = 1.5) +
+          geom_point(data = just_added_coords,
+                     aes(x = x, y = y, color = y_cls), alpha = 1, size = 6) +
+          theme_minimal() +
+          labs(title = "Active Sample Highlighting",
+               x = "Dim 1",
+               y = "Dim 2",
+               color = "Class")
+        grid::grid.newpage()
+        grid::pushViewport(grid::viewport(layout = grid::grid.layout(1, 2)))
+        print(p, vp = grid::viewport(layout.pos.row = 1, layout.pos.col = 1))
+        print(p_sc, vp = grid::viewport(layout.pos.row = 1, layout.pos.col = 2))
+      } else {
+        print(p)
+      }
       flush.console()
     }
 

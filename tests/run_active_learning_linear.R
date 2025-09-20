@@ -19,11 +19,11 @@ valid_df <- df[split$test, , drop = FALSE]
 res <- activeLearning(
   train_df = train_df,
   valid_df = valid_df,
-  initial_n = max(100L, round(0.1 * nrow(train_df))),
+  initial_n = 20L,
   kernel = "vanilladot",
-  alpha = 3,
+  alpha = 5,
   heterogeneous_prop = 0.8,
-  stopping_patience = 5
+  stopping_patience = 100
 )
 
 # Plot convergence

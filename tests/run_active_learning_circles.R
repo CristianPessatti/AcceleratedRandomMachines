@@ -29,7 +29,7 @@ res <- activeLearning(
   kernel = "rbfdot",
   alpha = 3,
   heterogeneous_prop = 0.8,
-  stopping_patience = 3
+  stopping_patience = 100
 )
 
 p <- ggplot(res$history, aes(x = iteration, y = mean_accuracy)) +
