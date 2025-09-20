@@ -19,11 +19,12 @@ valid_df <- df[split$test, , drop = FALSE]
 res <- activeLearning(
   train_df = train_df,
   valid_df = valid_df,
-  initial_n = 1000L,
+  initial_n = 100L,
   kernel = "rbfdot",
   alpha = 3,
   heterogeneous_prop = 0.8,
-  stopping_patience = 5
+  stopping_patience = 100,
+  max_additions = 1000
 )
 
 p <- ggplot(res$history, aes(x = iteration, y = mean_accuracy)) +

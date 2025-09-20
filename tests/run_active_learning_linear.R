@@ -23,7 +23,7 @@ res <- activeLearning(
   kernel = "vanilladot",
   alpha = 3,
   heterogeneous_prop = 0.8,
-  stopping_patience = 2
+  stopping_patience = 5
 )
 
 # Plot convergence

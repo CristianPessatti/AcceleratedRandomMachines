@@ -7,6 +7,7 @@ source("functions/sampling/localized_sampling.R")
 source("functions/sampling/nearest_enemy_sampling.R")
 source("functions/utils/time_ms.R")
 source("functions/metrics/metrics.R")
+source("activeLearning/fit_model.R")
 
 # Active Learning routine
 # - train_df: data.frame with features x1, x2, ... and target y
@@ -14,6 +15,7 @@ source("functions/metrics/metrics.R")
 # - initial_n: initial labeled pool size (selected with localized_sampling)
 # - kernel: ksvm kernel (e.g., "rbfdot", "vanilladot", "polydot", ...)
 # - alpha: weighting parameter for nearest_enemy_sampling
+# - pool_size: number of candidates to sample per round before choosing best per class
 # - heterogeneous_prop: pass-through to localized_sampling for initial pool
 # - stopping_delta: min absolute improvement in mean accuracy to continue
 # - stopping_patience: stop after this many consecutive small improvements
@@ -24,6 +26,7 @@ activeLearning <- function(
   initial_n,
   kernel = "rbfdot",
   alpha = 1,
+  pool_size = 10,
   heterogeneous_prop = 0.8,
   stopping_delta = 1e-3,
   stopping_patience = 5,
@@ -83,74 +86,10 @@ activeLearning <- function(
   acc_history <- numeric(0)
   above_plateau_streak <- 0L
 
-  # Helper: fit a single model on the whole active set and collect metrics
-  fit_model <- function(active_df) {
-    # Ensure only features + y for modeling
-    active_model_df <- active_df[, c(feature_names, "y", ".row_id"), drop = FALSE]
-    valid_model_df  <- valid_df[,  c(feature_names, "y"), drop = FALSE]
-
-    # Train
-    fit_b <- tryCatch({
-      time_ms({
-        result <- NULL
-        capture.output({
-          result <- kernlab::ksvm(
-            y ~ .,
-            data   = active_model_df[, c(feature_names, "y"), drop = FALSE],
-            kernel = kernel,
-            scaled = TRUE
-          )
-        })
-        result  # <- devolve o modelo, não o texto
-      })
-    }, error = function(e) list(value = NULL, ms = NA_real_))
-
-    # Predict on validation and compute accuracy
-    correct_counts <- integer(nrow(valid_model_df))
-    if (!is.null(fit_b$value)) {
-      pred <- tryCatch({ predict(fit_b$value, newdata = valid_model_df) }, error = function(e) NULL)
-      if (!is.null(pred)) {
-        correct_counts <- as.integer(as.character(pred) == as.character(valid_model_df$y))
-      }
-    }
-
-    # Support vectors in this iteration (relative to active_model_df)
-    sv_counter <- integer(nrow(active_model_df))
-    if (!is.null(fit_b$value)) {
-      sv_idx_list <- tryCatch({ kernlab::alphaindex(fit_b$value) }, error = function(e) NULL)
-      if (!is.null(sv_idx_list)) {
-        sv_idx <- unique(unlist(sv_idx_list))
-        if (length(sv_idx) > 0) {
-          tab <- table(sv_idx)
-          sv_counter[as.integer(names(tab))] <- sv_counter[as.integer(names(tab))] + 1L
-        }
-      }
-    }
-
-    mean_acc <- mean(correct_counts)
-    sd_acc   <- NA_real_
-    mean_time <- fit_b$ms
-
-    list(
-      mean_accuracy = mean_acc,
-      sd_accuracy = sd_acc,
-      mean_train_time_ms = mean_time,
-      per_val = tibble::tibble(
-        val_row_id = seq_len(nrow(valid_model_df)),
-        correct_count = correct_counts,
-        total_models = 1L,
-        mean_correct = correct_counts
-      ),
-      per_sv = tibble::tibble(
-        train_row_id = active_model_df$.row_id,
-        sv_count = sv_counter
-      )
-    )
-  }
 
   # Evaluate initial pool
   iter <- 0L
-  res0 <- fit_model(active_df)
+  res0 <- fit_model(active_df, valid_df, feature_names, kernel)
   # Plateau for initial iteration (tree over a single point -> fallback to observed max)
   acc_df0 <- tibble::tibble(iteration = iter, mean_accuracy = res0$mean_accuracy)
   tree_model0 <- tryCatch({
@@ -183,8 +122,8 @@ activeLearning <- function(
 
   # Console log for initial iteration
   if (verbose) {
-    cat(sprintf("[ActiveLearning] Iteration %d | accuracy=%.4f | plateau=%.4f | decision=%s\n",
-              iter, res0$mean_accuracy, plateau0, "continue"))
+    cat(sprintf("[ActiveLearning] Iteration %d | accuracy=%.4f | plateau=%.4f | added=%d | decision=%s\n",
+              iter, res0$mean_accuracy, plateau0, 0L, "continue"))
     flush.console()
   }
 
@@ -192,25 +131,56 @@ activeLearning <- function(
 
   no_improve_streak <- 0L
 
-  # Iterative additions
-  for (step in seq_len(max_additions)) {
-    if (nrow(remaining_df) == 0) break
+  # Iterative additions (pooled sampling and best-per-class selection)
+  total_added <- 0L
+  while (nrow(remaining_df) > 0 && total_added < max_additions) {
+    remaining_quota <- max_additions - total_added
+    if (remaining_quota <= 0L) break
 
-    # Pick one candidate from the remaining pool using nearest-enemy sampling
-    cand <- nearest_enemy_sampling(
+    # Sample a pool of candidates using nearest-enemy sampling
+    pool_n <- min(pool_size, nrow(remaining_df))
+    cand_pool <- nearest_enemy_sampling(
       data = remaining_df[, c(feature_names, "y", ".row_id"), drop = FALSE],
       y_var = "y",
-      final_sample_size = 1,
+      final_sample_size = pool_n,
       alpha = alpha
     )
 
-    # Ensure not duplicated
-    cand <- cand[1, , drop = FALSE]
-    active_df <- dplyr::bind_rows(active_df, cand)
-    remaining_df <- dplyr::anti_join(remaining_df, cand[, c(".row_id"), drop = FALSE], by = ".row_id")
+    # For each class in the pool, choose the best candidate (or the only one) by validation accuracy
+    classes_in_pool <- unique(as.character(cand_pool$y))
+    best_rows <- list()
+    for (cls in classes_in_pool) {
+      cand_cls <- cand_pool[as.character(cand_pool$y) == cls, , drop = FALSE]
+      if (nrow(cand_cls) == 1) {
+        best_rows[[length(best_rows) + 1L]] <- cand_cls[1, , drop = FALSE]
+      } else {
+        # Evaluate each candidate by temporarily adding to active set
+        acc_values <- numeric(nrow(cand_cls))
+        for (i in seq_len(nrow(cand_cls))) {
+          tmp_active <- dplyr::bind_rows(active_df, cand_cls[i, , drop = FALSE])
+          res_tmp <- fit_model(tmp_active, valid_df, feature_names, kernel)
+          acc_values[i] <- res_tmp$mean_accuracy
+        }
+        best_idx <- which.max(acc_values)
+        best_rows[[length(best_rows) + 1L]] <- cand_cls[best_idx, , drop = FALSE]
+      }
+    }
+
+    # Enforce remaining quota if fewer additions allowed than classes present
+    add_df <- dplyr::bind_rows(best_rows)
+    if (nrow(add_df) > remaining_quota) {
+      add_df <- add_df[seq_len(remaining_quota), , drop = FALSE]
+    }
+
+    # Apply additions
+    added_this_iter <- nrow(add_df)
+    if (added_this_iter == 0L) break
+    active_df <- dplyr::bind_rows(active_df, add_df)
+    remaining_df <- dplyr::anti_join(remaining_df, add_df[, c(".row_id"), drop = FALSE], by = ".row_id")
+    total_added <- total_added + added_this_iter
 
     iter <- iter + 1L
-    res_iter <- fit_model(active_df)
+    res_iter <- fit_model(active_df, valid_df, feature_names, kernel)
 
     # Build acc_df including the current iteration to compute plateau
     acc_df <- dplyr::bind_rows(
@@ -266,8 +236,8 @@ activeLearning <- function(
       }
     }
     if (verbose) {
-      cat(sprintf("[ActiveLearning] Iteration %d | accuracy=%.4f | plateau=%.4f | decision=%s\n",
-                  iter, res_iter$mean_accuracy, plateau, decision_msg))
+      cat(sprintf("[ActiveLearning] Iteration %d | accuracy=%.4f | plateau=%.4f | added=%d | decision=%s\n",
+                  iter, res_iter$mean_accuracy, plateau, added_this_iter, decision_msg))
       flush.console()
     }
 
