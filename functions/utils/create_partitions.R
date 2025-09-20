@@ -1,5 +1,12 @@
 require(dplyr)
 
+#-------------------------------------------------------------------------------
+# create_partitions
+#
+# Map numeric features to an integer partition id by cutting each numeric
+# feature into n_partitions bins and encoding the multi-dimensional bin as a
+# single index. Non-numeric columns are ignored.
+#-------------------------------------------------------------------------------
 create_partitions <- function(df, n_partitions = 4) {
   cuts <- df %>%
     mutate(across(where(is.numeric),

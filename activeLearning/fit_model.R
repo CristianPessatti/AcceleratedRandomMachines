@@ -1,3 +1,17 @@
+## -----------------------------------------------------------------------------
+## fit_model: train one SVM and collect evaluation/diagnostic metrics
+##
+## Inputs
+## - active_df: current active set with feature columns, factor y, and .row_id
+## - valid_df: validation set (same feature names and y)
+## - feature_names: character vector of feature columns to use in the model
+## - kernel: kernlab::ksvm kernel identifier (e.g., "rbfdot")
+##
+## Returns (list)
+## - mean_accuracy, sd_accuracy, mean_train_time_ms
+## - per_val: per-validation observation correctness and aggregates
+## - per_sv: per-active example support-vector counts (indexed by .row_id)
+## -----------------------------------------------------------------------------
 require(dplyr)
 require(tibble)
 require(kernlab)

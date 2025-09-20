@@ -1,3 +1,17 @@
+## -----------------------------------------------------------------------------
+## localized_sampling
+##
+## Purpose
+## - Partition the feature space, estimate within-partition class heterogeneity,
+##   and sample a final set that prioritizes heterogeneous partitions while also
+##   covering homogeneous ones.
+##
+## Key steps
+## - Create integer partitions over numeric features
+## - Compute per-partition class proportions and entropy
+## - Split the target sample size between heterogeneous and homogeneous
+##   partitions, then draw samples from each using systematic samplers
+## -----------------------------------------------------------------------------
 require(dplyr)
 require(tidyr)
 require(ggplot2)

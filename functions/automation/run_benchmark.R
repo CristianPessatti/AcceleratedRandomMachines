@@ -1,3 +1,13 @@
+#-------------------------------------------------------------------------------
+# run_benchmark
+#
+# Repeated holdout benchmarking comparing:
+# - full model trained on all training data
+# - localized sampling
+# - nearest enemy sampling
+#
+# Returns a tibble with per-holdout accuracy and training time for each method.
+#-------------------------------------------------------------------------------
 run_benchmark <- function(
     df,
     n_holdouts,

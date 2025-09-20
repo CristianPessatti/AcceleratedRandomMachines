@@ -1,11 +1,11 @@
-# Systematic Sampling from Partition Centroid (SyS-PC) para UMA partição
-# data: tibble/data.frame somente com a partição já filtrada
-# y_var: variável resposta a excluir (se NULL, usa todas numéricas)
-# n_total: tamanho amostral desejado na partição (opcional)
-# prop: proporção (0<prop<=1) se n_total não for dado (opcional)
-# scale_vars: padroniza variáveis antes do PCA
-# seed: semente opcional
-# return_idx: se TRUE, retorna apenas índices; senão retorna linhas amostradas c/ metadados
+# Systematic Sampling from Partition Centroid (SyS-PC) for a single partition
+# data: tibble/data.frame already filtered to one partition
+# y_var: response column to exclude from features (if NULL, use all numeric)
+# n_total: desired sample size from the partition (optional)
+# prop: sampling proportion (0<prop<=1) if n_total not provided (optional)
+# scale_vars: scale variables before PCA
+# seed: optional random seed
+# return_idx: if TRUE return only row indices; otherwise return sampled rows
 
 sys_pc <- function(data,
                    y_var = NULL,

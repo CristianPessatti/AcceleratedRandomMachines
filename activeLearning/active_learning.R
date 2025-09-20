@@ -1,3 +1,16 @@
+## -----------------------------------------------------------------------------
+## Active Learning module: pooled nearest-enemy selection with per-class best
+##
+## Summary
+## - Initializes an active set via localized sampling to capture local structure
+## - Iteratively samples a candidate pool (nearest-enemy sampling)
+## - For each class present in the pool, evaluates candidates by validation
+##   accuracy and adds the best-performing candidate for that class
+## - Tracks history (accuracy, timing), per-validation correctness, and
+##   support-vector counts; uses a shallow regression tree to estimate a
+##   plateau and stops after a patience window
+## - Console logs include the number of observations added each iteration
+## -----------------------------------------------------------------------------
 require(dplyr)
 require(tibble)
 require(kernlab)

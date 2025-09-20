@@ -1,14 +1,14 @@
 # Systematic Sampling Over Order (SyS-O2)
-
+#
 # data: data.frame/tibble
-# y_var: string com o nome da coluna de classe (fator/char/int)
-# n_total: tamanho amostral total desejado (opcional se usar `prop`)
-# prop: proporção global (0<prop<=1) do total (opcional se usar `n_total`)
-# order_by: nome de coluna para ordenar dentro de cada classe (opcional)
-# decreasing: se TRUE, ordena decrescente por `order_by`
-# within: "random" (default) ou "given" (usa a ordem atual das linhas)
-# seed: semente opcional
-# return_idx: se TRUE, retorna apenas índices das linhas amostradas
+# y_var: class column name (factor/character/integer)
+# n_total: desired total sample size (optional if using `prop`)
+# prop: global proportion (0<prop<=1) of the total (optional if using `n_total`)
+# order_by: column name to determine within-class ordering (optional)
+# decreasing: if TRUE, sort decreasing by `order_by`
+# within: "random" (default) or "given" (keep input order)
+# seed: optional random seed
+# return_idx: if TRUE, return only row indices
 
 sys_o2 <- function(data,
                    y_var,

@@ -1,3 +1,12 @@
+#------------------------------------------------------------------------------
+# nearest_enemy_distance
+#
+# Compute, for each observation, the Euclidean distance to its nearest example
+# from a different class. Returns a numeric vector aligned with rows of df.
+# - df: data.frame with features and y_var column
+# - y_var: string or symbol for the class column
+# - scale_vars: whether to z-scale features before distances
+#------------------------------------------------------------------------------
 nearest_enemy_distance <- function(df, y_var, scale_vars = TRUE) {
   stopifnot(is.data.frame(df))
 

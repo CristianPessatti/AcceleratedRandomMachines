@@ -1,3 +1,10 @@
+## -----------------------------------------------------------------------------
+## stratified_holdout
+##
+## Split indices into train/test using class-stratified sampling. Ensures each
+## class contributes roughly train_prop of its examples to the training split.
+## Returns a list with integer vectors 'train' and 'test'.
+## -----------------------------------------------------------------------------
 stratified_holdout <- function(y, train_prop, seed = NULL) {
   if (!is.null(seed)) set.seed(seed)
   y <- as.factor(y)
