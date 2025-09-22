@@ -76,5 +76,28 @@ localized_sampling <- function(data,
   })
 
   final_sample <- bind_rows(heterogeneous_samples, homogeneous_samples)
+
+  # Ensure at least one instance of every class appears in the final sample
+  # Uses the provided y_var to determine classes and fills any missing class
+  # by selecting one representative from the remaining pool.
+  all_classes <- unique(as.character(data[[y_var]]))
+  present_classes <- unique(as.character(final_sample[[y_var]]))
+  missing_classes <- setdiff(all_classes, present_classes)
+
+  if (length(missing_classes) > 0) {
+    ensure_rows <- purrr::map_dfr(missing_classes, function(cls) {
+      cands <- data[data[[y_var]] == cls, , drop = FALSE]
+      by_cols <- intersect(names(cands), names(final_sample))
+      # Prefer candidates not already selected
+      if (length(by_cols) > 0 && nrow(final_sample) > 0) {
+        cands2 <- dplyr::anti_join(cands, final_sample[, by_cols, drop = FALSE], by = by_cols)
+      } else {
+        cands2 <- cands
+      }
+      if (nrow(cands2) == 0) cands2 <- cands
+      cands2[1, , drop = FALSE]
+    })
+    final_sample <- dplyr::bind_rows(final_sample, ensure_rows)
+  }
   return(final_sample)
 }

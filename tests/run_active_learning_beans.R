@@ -8,13 +8,25 @@ source("functions/sampling/validation_samplers.R")
 set.seed(123)
 
 # Load dataset
-df <- arrow::read_parquet("datasets/beans.parquet")
-df$y <- as.factor(df$y)
+df <- arrow::read_parquet("datasets/beans.parquet")# %>%
+#  filter(y != "BOMBAY")
+df$y <- factor(df$y)
+
+df %>%
+  group_by(y) %>%
+  summarise(n = n())
 
 # Train/validation split (70/30) stratified
 split <- stratified_holdout(df$y, train_prop = 0.7, seed = 123)
 train_df <- df[split$train, , drop = FALSE]
 valid_df <- df[split$test, , drop = FALSE]
+
+nrow(df)
+
+mod0 <- kernlab::ksvm(y ~ ., data = train_df, kernel = "rbfdot", C = 1)
+preds0 <- predict(mod0, valid_df)
+mean(preds0 == valid_df$y) - max(res$history$mean_accuracy)
+
 # Run active learning
 res <- activeLearning(
   train_df = train_df,
@@ -23,7 +35,7 @@ res <- activeLearning(
   kernel = "rbfdot",
   alpha = 3,
   heterogeneous_prop = 0.8,
-  stopping_patience = 100,
+  stopping_patience = 15,
   max_additions = 1000
 )
 
@@ -39,15 +51,19 @@ p <- ggplot(res$history, aes(x = iteration, y = mean_accuracy)) +
 
 p
 
-train_df %>%
+p1 <-train_df %>%
   ggplot(aes(x = x1, y = x2, colour = y)) +
   geom_point() +
   theme_minimal()
 
-res$final_active %>%
+
+nrow(res$final_active)
+p2 <- res$final_active %>%
   ggplot(aes(x = x1, y = x2, colour = y)) +
   geom_point() +
   theme_minimal()
+
+patchwork::wrap_plots(p1, p2, ncol = 2)
 
 count_sv <- res$support_vector_counts %>%
   group_by(train_row_id) %>%

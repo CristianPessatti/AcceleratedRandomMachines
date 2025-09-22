@@ -23,8 +23,24 @@ res <- activeLearning(
   kernel = "vanilladot",
   alpha = 5,
   heterogeneous_prop = 0.8,
-  stopping_patience = 100
+  stopping_patience = 5
 )
+
+ddd <- res$history %>% select(iteration, mean_accuracy) #%>%
+  #rbind(tibble(iteration = 12:40, mean_accuracy = rep(0.95, 29)))
+
+tree_model <- rpart::rpart(mean_accuracy ~ iteration, 
+  data = ddd,
+  control = rpart::rpart.control(minsplit = 2))
+ddd$preds <- as.numeric(predict(tree_model, ddd))
+
+res$history %>%
+  ggplot(aes(x = iteration, y = mean_accuracy)) +
+  geom_line(color = "steelblue", linewidth = 1) +
+  geom_point(color = "steelblue", size = 1.5) +
+  geom_line(data = ddd, aes(x = iteration, y = preds), color = "red", linewidth = 1) +
+  ylim(0, 1) +
+  theme_minimal()
 
 # Plot convergence
 p <- ggplot(res$history, aes(x = iteration, y = mean_accuracy)) +

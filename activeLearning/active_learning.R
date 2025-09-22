@@ -104,7 +104,10 @@ activeLearning <- function(
   )
 
   acc_history <- numeric(0)
-  above_plateau_streak <- 0L
+  # Track running maximum of tree-model predicted accuracy; stop if it
+  # doesn't increase for stopping_patience iterations
+  best_max_pred <- NA_real_
+  max_pred_nochange_streak <- 0L
 
   # Precompute 2D coordinates for scatter animation
   plot_coords <- NULL
@@ -174,6 +177,8 @@ activeLearning <- function(
   val_obs_metrics <- dplyr::bind_rows(val_obs_metrics, dplyr::mutate(res0$per_val, iteration = iter, .before = 1))
   sv_counts <- dplyr::bind_rows(sv_counts, dplyr::mutate(res0$per_sv, iteration = iter, .before = 1))
   acc_history <- c(acc_history, res0$mean_accuracy)
+  best_max_pred <- plateau0
+  max_pred_nochange_streak <- 0L
 
   # Console log for initial iteration
   if (verbose) {
@@ -185,10 +190,15 @@ activeLearning <- function(
   # Draw initial animation frames
   if (animate) {
     # Convergence plot
+    tree_pred0 <- tryCatch({
+      if (!is.null(tree_model0)) as.numeric(predict(tree_model0, acc_df0)) else rep(NA_real_, nrow(acc_df0))
+    }, error = function(e) rep(NA_real_, nrow(acc_df0)))
+    df_pred0 <- tibble::tibble(iteration = acc_df0$iteration, tree_pred = tree_pred0)
     p <- ggplot(history, aes(x = iteration, y = mean_accuracy)) +
       geom_line(color = "steelblue", linewidth = 1) +
       geom_point(color = "steelblue", size = 1.5) +
       geom_line(aes(x = iteration, y = plateau_max_pred), color = "red", linewidth = 1) +
+      geom_line(data = df_pred0, aes(x = iteration, y = tree_pred), color = "darkorange", linewidth = 1) +
       ylim(0, 1) +
       theme_minimal() +
       labs(title = "Active Learning Convergence",
@@ -281,7 +291,7 @@ activeLearning <- function(
       rpart::rpart(
         mean_accuracy ~ iteration,
         data = acc_df,
-        control = rpart::rpart.control(maxdepth = 3)
+        control = rpart::rpart.control(minsplit = 2, maxdepth = 3)
       )
     }, error = function(e) NULL)
 
@@ -305,37 +315,42 @@ activeLearning <- function(
     val_obs_metrics <- dplyr::bind_rows(val_obs_metrics, dplyr::mutate(res_iter$per_val, iteration = iter, .before = 1))
     sv_counts <- dplyr::bind_rows(sv_counts, dplyr::mutate(res_iter$per_sv, iteration = iter, .before = 1))
 
-    # Stopping rule: regression tree plateau (max predicted accuracy)
+    # Stopping rule: running max of tree predictions; stop if it doesn't
+    # increase beyond stopping_delta for stopping_patience iterations
     acc_history <- c(acc_history, res_iter$mean_accuracy)
-    if (!is.na(res_iter$mean_accuracy) && res_iter$mean_accuracy > plateau) {
-      above_plateau_streak <- above_plateau_streak + 1L
+    if (is.finite(plateau) && (is.na(best_max_pred) || plateau > best_max_pred + stopping_delta)) {
+      best_max_pred <- plateau
+      max_pred_nochange_streak <- 0L
     } else {
-      above_plateau_streak <- 0L
+      max_pred_nochange_streak <- max_pred_nochange_streak + 1L
     }
 
     # Console log for this iteration and decision
-    will_stop <- above_plateau_streak >= stopping_patience
+    will_stop <- max_pred_nochange_streak >= stopping_patience
     decision_msg <- if (will_stop) {
       "stop"
+    } else if (max_pred_nochange_streak > 0) {
+      "continue(*)"
     } else {
-      if (above_plateau_streak == 0) {
-        "continue"
-      } else {
-        "continue(*)"
-      }
+      "continue"
     }
     if (verbose) {
-      cat(sprintf("[ActiveLearning] Iteration %d | accuracy=%.4f | plateau=%.4f | added=%d | decision=%s\n",
-                  iter, res_iter$mean_accuracy, plateau, added_this_iter, decision_msg))
+      cat(sprintf("[ActiveLearning] Iteration %d | accuracy=%.4f | plateau=%.4f | added=%d | size = %d | decision=%s\n",
+                  iter, res_iter$mean_accuracy, plateau, added_this_iter, nrow(active_df), decision_msg))
       flush.console()
     }
 
     # Update animation frames
     if (animate) {
+      tree_pred <- tryCatch({
+        if (!is.null(tree_model)) as.numeric(predict(tree_model, acc_df)) else rep(NA_real_, nrow(acc_df))
+      }, error = function(e) rep(NA_real_, nrow(acc_df)))
+      df_pred <- tibble::tibble(iteration = acc_df$iteration, tree_pred = tree_pred)
       p <- ggplot(history, aes(x = iteration, y = mean_accuracy)) +
         geom_line(color = "steelblue", linewidth = 1) +
         geom_point(color = "steelblue", size = 1.5) +
         geom_line(aes(x = iteration, y = plateau_max_pred), color = "red", linewidth = 1) +
+        geom_line(data = df_pred, aes(x = iteration, y = tree_pred), color = "darkorange", linewidth = 1) +
         ylim(0, 1) +
         theme_minimal() +
         labs(title = "Active Learning Convergence",
