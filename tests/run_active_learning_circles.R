@@ -3,6 +3,7 @@ require(ggplot2)
 require(arrow)
 
 source("activeLearning/active_learning.R")
+source("functions/metrics/metrics.R")
 source("functions/sampling/validation_samplers.R")
 
 set.seed(123)
@@ -25,11 +26,12 @@ valid_df <- df[split$test, , drop = FALSE]
 res <- activeLearning(
   train_df = train_df,
   valid_df = valid_df,
-  initial_n = 50L,
+  initial_n = 10L,
   kernel = "rbfdot",
   alpha = 3,
   heterogeneous_prop = 0.8,
-  stopping_patience = 100
+  stopping_patience = 10,
+  metric_fn = accuracy
 )
 
 p <- ggplot(res$history, aes(x = iteration, y = mean_accuracy)) +

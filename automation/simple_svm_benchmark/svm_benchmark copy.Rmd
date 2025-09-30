@@ -1,0 +1,11 @@
+---
+title: "TESTE AMOSTRAGEM SVM"
+output:
+  html_document:
+    toc: true
+    df_print: paged
+---
+
+$$
+p(i) = \frac{\exp(\alpha d_i)}{\sum_{j} \exp(\alpha d_j)}
+$$

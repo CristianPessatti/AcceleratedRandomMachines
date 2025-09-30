@@ -6,6 +6,7 @@
 ## - valid_df: validation set (same feature names and y)
 ## - feature_names: character vector of feature columns to use in the model
 ## - kernel: kernlab::ksvm kernel identifier (e.g., "rbfdot")
+## - metric_fn: function(truth, pred) -> numeric metric (default: accuracy)
 ##
 ## Returns (list)
 ## - mean_accuracy, sd_accuracy, mean_train_time_ms
@@ -23,7 +24,8 @@ source("functions/utils/time_ms.R")
 # - valid_df: validation data.frame for evaluation
 # - feature_names: vector of feature column names
 # - kernel: ksvm kernel parameter
-fit_model <- function(active_df, valid_df, feature_names, kernel) {
+fit_model <- function(active_df, valid_df, feature_names, kernel, metric_fn = NULL) {
+  if (is.null(metric_fn)) metric_fn <- accuracy
   # Ensure only features + y for modeling
   active_model_df <- active_df[, c(feature_names, "y", ".row_id"), drop = FALSE]
   valid_model_df  <- valid_df[,  c(feature_names, "y"), drop = FALSE]
@@ -44,7 +46,7 @@ fit_model <- function(active_df, valid_df, feature_names, kernel) {
     })
   }, error = function(e) list(value = NULL, ms = NA_real_))
 
-  # Predict on validation and compute accuracy
+  # Predict on validation and compute metric
   correct_counts <- integer(nrow(valid_model_df))
   if (!is.null(fit_b$value)) {
     pred <- tryCatch({ predict(fit_b$value, newdata = valid_model_df) }, error = function(e) NULL)
@@ -66,7 +68,10 @@ fit_model <- function(active_df, valid_df, feature_names, kernel) {
     }
   }
 
-  mean_acc <- mean(correct_counts)
+  # Use provided metric function (default: accuracy)
+  mean_acc <- tryCatch({
+    if (exists("pred") && !is.null(pred)) metric_fn(valid_model_df$y, pred) else NA_real_
+  }, error = function(e) NA_real_)
   sd_acc   <- NA_real_
   mean_time <- fit_b$ms
 

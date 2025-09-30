@@ -3,6 +3,7 @@ require(ggplot2)
 require(arrow)
 
 source("activeLearning/active_learning.R")
+source("functions/metrics/metrics.R")
 source("functions/sampling/validation_samplers.R")
 
 set.seed(123)
@@ -23,8 +24,50 @@ res <- activeLearning(
   kernel = "vanilladot",
   alpha = 5,
   heterogeneous_prop = 0.8,
-  stopping_patience = 5
+  stopping_patience = 15,
+  metric_fn = accuracy
 )
+
+conv <- res$gganimate_data$convergence
+
+library(ggplot2)
+library(gganimate)
+
+p <- ggplot(conv, aes(iteration, mean_accuracy)) +
+  geom_line(color = "steelblue") +
+  geom_point(color = "steelblue") +
+  geom_line(aes(y = tree_pred), color = "darkorange") +
+  ylim(0, 1) +
+  labs(title = "Active Learning Convergence",
+       x = "Iteration", y = "Mean Accuracy (validation)") +
+  transition_reveal(iteration)
+
+anim <- animate(p, nframes = nrow(conv), fps = 2)
+anim_save("active_learning_convergence.gif", anim)
+
+
+
+sc <- res$gganimate_data$scatter
+
+p_sc <- ggplot(sc) +
+  geom_point(aes(x, y), color = "gray50", alpha = 0.08) +
+  geom_point(
+    aes(x, y, color = y_cls,
+        size = ifelse(is_just_added, 6, ifelse(is_active, 2, NA))),
+    alpha = 1, show.legend = TRUE, na.rm = TRUE
+  ) +
+  scale_size_identity() +
+  labs(title = "Active Sample Highlighting — Iteration: {closest_state}",
+       x = "Dim 1", y = "Dim 2", color = "Class") +
+  transition_states(iteration, transition_length = 0, state_length = 1)
+
+anim_sc <- animate(p_sc, nframes = length(unique(sc$iteration)), fps = 2)
+anim_save("active_learning_scatter.gif", anim_sc)
+
+
+
+
+
 
 ddd <- res$history %>% select(iteration, mean_accuracy) #%>%
   #rbind(tibble(iteration = 12:40, mean_accuracy = rep(0.95, 29)))
@@ -75,4 +118,19 @@ sv_df <- res$final_active %>%
 sv_df %>%
   ggplot(aes(x = x1, y = x2, colour = y, size = count_sv)) +
   geom_point(alpha = 0.5) +
-  theme_minimal()
+  labs(title = "",
+       x = "X1",
+       y = "X2",
+       size = "Support Vector Count") +
+  theme_minimal() +
+  theme(
+    axis.title = element_text(size = 28),
+    axis.text = element_text(size = 24),
+    legend.position = "none"
+  )
+
+tail(res$history)
+
+modelo_completo <- kernlab::ksvm(y ~ x1 + x2, data = df, kernel = "vanilladot")
+preds <- predict(modelo_completo, df)
+accuracy(preds, df$y)
