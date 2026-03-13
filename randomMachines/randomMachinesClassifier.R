@@ -5,7 +5,6 @@ source("functions/valdation/balanced_kfold.R")
 source("functions/metrics/metrics.R")
 source("functions/math/math_formulas.R")
 source("functions/valdation/bootstrap_sampler.R")
-source("functions/sampling/localized_sampling.R")
 
 randomMachinesClassifier <- function(
   formula,
@@ -90,24 +89,34 @@ randomMachinesClassifierClass <- setClass("randomMachinesClassifierClass",
 )
 
 predict.randomMachinesClassifierClass <- function(rmc_model, newdata, type = "class") {
-  labels <- rmc_model$train[, rmc_model$target]
+  weights <- rmc_model$bs_weights
+  weights <- weights / sum(weights)
 
-  probabilities <- map(1:length(rmc_model$bs_models), function(i) {
-    kernlab::predict(rmc_model$bs_models[[i]], newdata, type = "probabilities")
+  probabilities <- purrr::map(rmc_model$bs_models, function(model) {
+    as.matrix(kernlab::predict(model, newdata, type = "probabilities"))
   })
 
-  prob_array <- array(unlist(probabilities), dim = c(nrow(newdata), ncol(probabilities[[1]]), length(rmc_model$bs_models)))
-  
-  mean_probs <- apply(prob_array, c(1, 2), mean)
-  
   class_labels <- colnames(probabilities[[1]])
-  colnames(mean_probs) <- class_labels
+
+  probabilities <- purrr::map(probabilities, function(mat) {
+    mat <- mat[, class_labels, drop = FALSE]
+    return(mat)
+  })
+
+  weighted_probs <- Reduce(
+    `+`,
+    purrr::map(seq_along(probabilities), function(i) {
+      probabilities[[i]] * weights[i]
+    })
+  )
+
+  colnames(weighted_probs) <- class_labels
 
   if (type == "class") {
-    max_indices <- apply(mean_probs, 1, which.max)
-    final_preds <- as.factor(class_labels[max_indices])
+    max_indices <- apply(weighted_probs, 1, which.max)
+    final_preds <- factor(class_labels[max_indices], levels = class_labels)
     return(final_preds)
   } else {
-    return(mean_probs)
+    return(weighted_probs)
   }
 }
